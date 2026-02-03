@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interactivo Tijuana</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+    <style>
+        /* Personalización oscura para Leaflet */
+        .leaflet-container {
+            z-index: 10;
+            background: #0f172a; /* Slate 900 */
+        }
+        
+        /* TRUCO CSS: Invertimos los colores de OpenStreetMap para hacerlo Dark Mode */
+        .leaflet-tile {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
+
+        /* Hacks para hacer los Popups oscuros */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background-color: #1e293b; /* Slate 800 */
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        .leaflet-popup-close-button {
+            color: #94a3b8 !important; /* Slate 400 */
+        }
+        
+        /* Animaciones */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .new-item {
+            animation: slideIn 0.3s ease-out forwards;
+            border-left: 4px solid #d946ef; /* Fuchsia */
+            background-color: #334155; /* Slate 700 */
+        }
+        
+        /* Estilos responsivos */
+        .delete-btn-visible { opacity: 1; }
+        @media (min-width: 768px) {
+            .group:hover .delete-btn-desktop { opacity: 1; }
+            .delete-btn-desktop { opacity: 0; transition: opacity 0.2s ease-in-out; }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 font-sans h-screen flex flex-col overflow-hidden text-slate-100">
+
+    <header class="bg-slate-900 shadow-md z-20 flex-shrink-0 border-b border-slate-800">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <a href="/" class="p-2 rounded-full hover:bg-slate-800 transition-colors text-slate-400 hover:text-white" title="Volver al inicio">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                </a>
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight">Tiju<span class="text-fuchsia-500">Arte</span></h1>
+                    <p class="text-xs md:text-sm text-slate-400">Mapa de rutas urbanas</p>
+                </div>
+            </div>
+            <div class="text-right hidden sm:block">
+                <span class="bg-fuchsia-900/30 text-fuchsia-300 text-xs font-medium px-2.5 py-0.5 rounded border border-fuchsia-500/30">Beta v2.4 (OSM Dark)</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="md:hidden bg-slate-900 p-2 flex gap-2 flex-shrink-0 border-b border-slate-800">
+        <button id="tab-map" onclick="switchTab('map')" class="flex-1 py-2 px-4 rounded-lg bg-slate-700 text-white font-bold shadow-sm transition-all border border-slate-600">
+            🗺️ Mapa
+        </button>
+        <button id="tab-list" onclick="switchTab('list')" class="flex-1 py-2 px-4 rounded-lg bg-slate-900 text-slate-400 font-medium transition-all hover:bg-slate-800 border border-transparent">
+            📋 Lista
+        </button>
+    </div>
+
+    <main class="flex-1 max-w-6xl mx-auto w-full p-2 md:p-6 overflow-hidden">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+            
+            <div id="map-panel" class="md:col-span-2 h-full rounded-2xl overflow-hidden shadow-2xl border border-slate-700 relative flex flex-col bg-slate-900">
+                <div id="map" class="w-full h-full z-0 bg-slate-900"></div>
+                
+                <div class="absolute bottom-4 left-4 z-[500] bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700 shadow-lg text-xs font-mono text-cyan-400 pointer-events-none hidden sm:block">
+                    📍 LAT: 32.5149 | LON: -117.0382
+                </div>
+
+                <button onclick="resetMapView()" 
+                        class="absolute top-4 right-4 z-[500] bg-slate-800 hover:bg-slate-700 text-white p-2 rounded-lg shadow-lg border border-slate-600 transition-colors"
+                        title="Centrar mapa">
+                    🎯
+                </button>
+            </div>
+
+            <div id="list-panel" class="hidden md:flex md:col-span-1 h-full bg-slate-900 rounded-2xl shadow-xl border border-slate-700 flex-col overflow-hidden">
+                <div class="p-4 bg-slate-800/50 border-b border-slate-700 flex justify-between items-center">
+                    <h2 class="font-bold text-lg text-white flex items-center gap-2">
+                        <span class="bg-cyan-500 w-2 h-6 rounded-full inline-block shadow-[0_0_10px_rgba(6,182,212,0.5)]"></span>
+                        Lugares
+                    </h2>
+                    <span id="counter" class="text-xs font-bold bg-slate-700 text-cyan-400 px-2 py-1 rounded-full border border-slate-600">5</span>
+                </div>
+                
+                <div id="places-list" class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-900">
+                    </div>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(0,0,0,0.5)] border border-slate-700 flex items-center gap-3 z-[9999]">
+        <div id="toast-spinner" class="w-4 h-4 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin hidden"></div>
+        <span id="toast-message" class="font-medium text-sm">Notificación</span>
+    </div>
+
+    <script>
+        // --- 0. DATOS ---
+        const initialLocations = [
+            { lat: 32.5290, lng: -117.0234, title: "CECUT", desc: "Centro Cultural Tijuana" },
+            { lat: 32.5363, lng: -117.0375, title: "Av. Revolución", desc: "Ruta de Murales" },
+            { lat: 32.5323, lng: -117.0366, title: "Pasaje Rodríguez", desc: "Corredor de arte" },
+            { lat: 32.5343, lng: -117.1224, title: "Muro Fronterizo", desc: "Arte de protesta" },
+            { lat: 32.5255, lng: -117.0435, title: "Casa de la Cultura", desc: "Edificio histórico" }
+        ];
+
+        const markersRegistry = {};
+        const HOME_COORDS = [32.5149, -117.0382];
+        const HOME_ZOOM = 13;
+
+        // --- 1. INICIALIZAR MAPA ---
+        const map = L.map('map', { zoomControl: false }).setView(HOME_COORDS, HOME_ZOOM);
+
+        // --- CAMBIO: USANDO OPENSTREETMAP ---
+        // Nota el filtro CSS '.leaflet-tile' arriba que invierte los colores para que se vea oscuro
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const zoomControl = L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // --- 2. LISTA (Estilos Oscuros) ---
+        function addToList(title, desc, isNew = false, id = null) {
+            const listContainer = document.getElementById('places-list');
+            const item = document.createElement('div');
+            
+            if (id) item.id = `item-${id}`;
+
+            item.className = `p-3 bg-slate-800 rounded-lg border border-slate-700 hover:border-cyan-500/50 hover:bg-slate-750 transition-all cursor-pointer relative group shadow-sm ${isNew ? 'new-item' : ''}`;
+            
+            let deleteBtnHtml = '';
+            if (isNew && id) {
+                deleteBtnHtml = `
+                    <button onclick="borrarPunto('${id}', event)" 
+                            class="delete-btn-desktop absolute top-2 right-2 p-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-full transition-colors z-10" 
+                            title="Eliminar">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    </button>
+                `;
+            }
+
+            const defaultIcon = `<i class="text-cyan-500 text-xs ml-2 ${isNew ? 'hidden md:block' : ''}">📍</i>`;
+
+            item.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="flex-1 pr-6">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold text-slate-100 text-sm">${title}</h3>
+                            ${!isNew ? defaultIcon : ''}
+                        </div>
+                        <p class="text-slate-400 text-xs mt-1 leading-snug">${desc}</p>
+                    </div>
+                </div>
+                ${deleteBtnHtml}
+            `;
+            
+            item.onclick = function(e) {
+                if (id && markersRegistry[id]) {
+                    const marker = markersRegistry[id];
+                    map.flyTo(marker.getLatLng(), 16, { duration: 1.5 });
+                    marker.openPopup();
+                    if (window.innerWidth < 768) switchTab('map');
+                }
+            };
+
+            if(isNew) {
+                listContainer.prepend(item);
+                updateCounter(1); 
+            } else {
+                listContainer.appendChild(item);
+            }
+        }
+
+        function updateCounter(add = 0) {
+            const counterEl = document.getElementById('counter');
+            if(add === 0) counterEl.innerText = Object.keys(markersRegistry).length;
+            else {
+                const current = parseInt(counterEl.innerText);
+                counterEl.innerText = current + add;
+            }
+        }
+
+        // Cargar iniciales
+        initialLocations.forEach((loc, index) => {
+            const id = `static-${index}`;
+            const marker = L.marker([loc.lat, loc.lng]).addTo(map)
+                .bindPopup(`<div class="text-center"><h3 class="font-bold text-slate-900">${loc.title}</h3><p class="text-slate-600 text-sm">${loc.desc}</p></div>`);
+            markersRegistry[id] = marker;
+            addToList(loc.title, loc.desc, false, id);
+        });
+        updateCounter(0);
+
+        // --- 3. INTERACCIÓN (Popups con Input y Dark Mode) ---
+        let tempMarker = null;
+        let isSaving = false;
+
+        map.on('click', function(e) {
+            const { lat, lng } = e.latlng;
+            if (tempMarker) map.removeLayer(tempMarker);
+            isSaving = false;
+            tempMarker = L.marker([lat, lng]).addTo(map);
+
+            // Popup con Input y Estilo Oscuro Mejorado
+            const popupContent = `
+                <div class="text-center min-w-[240px] p-2">
+                    <h3 class="mb-4 font-bold text-slate-800 text-base">📍 Nuevo Marcador</h3>
+                    <input type="text" id="inputNombrePunto" placeholder="Ej: Tacos El Gordo" 
+                           class="w-full mb-4 px-3 py-2.5 bg-slate-100 border border-slate-300 rounded-lg text-slate-800 text-sm focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 placeholder-slate-400 transition-all">
+                    <div class="flex gap-3 justify-center">
+                        <button onclick="cancelarPunto()" 
+                                class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-medium py-2.5 px-4 rounded-lg transition-colors">
+                            Cancelar
+                        </button>
+                        <button onclick="guardarPunto(${lat}, ${lng})" 
+                                class="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold py-2.5 px-4 rounded-lg shadow-md hover:shadow-cyan-500/20 transition-all">
+                            Guardar
+                        </button>
+                    </div>
+                </div>
+            `;
+            tempMarker.bindPopup(popupContent).openPopup();
+
+            tempMarker.on('popupclose', function() {
+                if (!isSaving && tempMarker) {
+                    map.removeLayer(tempMarker);
+                    tempMarker = null;
+                }
+            });
+        });
+
+        window.cancelarPunto = () => map.closePopup();
+
+        window.guardarPunto = function(lat, lng) {
+            // Capturar nombre del input
+            const input = document.getElementById('inputNombrePunto');
+            const nombreUsuario = input.value.trim() || "Punto Personalizado";
+
+            isSaving = true;
+            const savedMarker = tempMarker; 
+            tempMarker = null; 
+            savedMarker.closePopup();
+            mostrarToast(`Guardando "${nombreUsuario}"...`, true);
+
+            setTimeout(() => {
+                mostrarToast("✅ ¡Guardado!", false);
+                const pointId = Date.now().toString();
+                markersRegistry[pointId] = savedMarker;
+
+                savedMarker.unbindPopup();
+                savedMarker.bindPopup(`
+                    <div class="text-center min-w-[140px]">
+                        <h3 class="font-bold text-slate-800 text-sm">${nombreUsuario}</h3>
+                        <p class="text-slate-600 text-xs mt-1">Lat: ${lat.toFixed(4)}</p>
+                        <button onclick="borrarPunto('${pointId}')" class="mt-2 text-xs text-red-500 hover:text-red-700 hover:underline flex items-center justify-center gap-1 w-full font-medium">
+                            🗑️ Eliminar
+                        </button>
+                    </div>
+                `);
+                
+                addToList(nombreUsuario, `Lat: ${lat.toFixed(4)}, Lon: ${lng.toFixed(4)}`, true, pointId);
+            }, 600);
+        };
+
+        window.borrarPunto = function(id, event) {
+            if (event) event.stopPropagation();
+            if (markersRegistry[id]) {
+                map.removeLayer(markersRegistry[id]);
+                delete markersRegistry[id];
+                const item = document.getElementById(`item-${id}`);
+                if (item) {
+                    item.style.transition = 'all 0.3s';
+                    item.style.opacity = '0';
+                    item.style.transform = 'translateX(20px)';
+                    setTimeout(() => item.remove(), 300);
+                }
+                updateCounter(-1);
+                mostrarToast("🗑️ Punto eliminado", false);
+            }
+        };
+
+        window.resetMapView = () => map.flyTo(HOME_COORDS, HOME_ZOOM, { duration: 1.5 });
+
+        // --- 4. TABS UI ---
+        window.switchTab = function(tabName) {
+            const mapPanel = document.getElementById('map-panel');
+            const listPanel = document.getElementById('list-panel');
+            const btnMap = document.getElementById('tab-map');
+            const btnList = document.getElementById('tab-list');
+
+            if (tabName === 'map') {
+                mapPanel.classList.remove('hidden');
+                listPanel.classList.add('hidden');
+                
+                btnMap.className = "flex-1 py-2 px-4 rounded-lg bg-slate-700 text-white font-bold shadow-sm transition-all border border-slate-600";
+                btnList.className = "flex-1 py-2 px-4 rounded-lg bg-slate-900 text-slate-400 font-medium transition-all hover:bg-slate-800 border border-transparent";
+                
+                setTimeout(() => map.invalidateSize(), 100);
+            } else {
+                mapPanel.classList.add('hidden');
+                listPanel.classList.remove('hidden');
+                listPanel.classList.add('flex');
+                
+                btnList.className = "flex-1 py-2 px-4 rounded-lg bg-slate-700 text-white font-bold shadow-sm transition-all border border-slate-600";
+                btnMap.className = "flex-1 py-2 px-4 rounded-lg bg-slate-900 text-slate-400 font-medium transition-all hover:bg-slate-800 border border-transparent";
+            }
+        };
+
+        function mostrarToast(mensaje, cargando = false) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            const spinner = document.getElementById('toast-spinner');
+
+            msgEl.textContent = mensaje;
+            if (cargando) spinner.classList.remove('hidden');
+            else spinner.classList.add('hidden');
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            if (!cargando) setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3000);
+        }
+    </script>
+</body>
+</html>
