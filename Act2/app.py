@@ -5,7 +5,7 @@ app = Flask(__name__)
 # Ruta de la Landing Page (viene de la Actividad 1)
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template('map.html')
 
 # --- NUEVA RUTA PARA LA ACTIVIDAD 2 ---
 # Esta ruta se encargará de mostrar el mapa de Leaflet

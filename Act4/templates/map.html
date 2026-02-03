@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interactivo Tijuana</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+    <style>
+        .leaflet-container {
+            z-index: 10;
+        }
+        /* Animación para nuevos items en la lista */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .new-item {
+            animation: slideIn 0.3s ease-out forwards;
+            border-left: 4px solid #2563eb; /* Azul para resaltar */
+            background-color: #eff6ff;
+        }
+        /* Estilos para el botón de borrar en la lista */
+        .delete-btn-visible {
+            opacity: 1;
+        }
+        @media (min-width: 768px) {
+            .group:hover .delete-btn-desktop {
+                opacity: 1;
+            }
+            .delete-btn-desktop {
+                opacity: 0;
+                transition: opacity 0.2s ease-in-out;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header Fijo -->
+    <header class="bg-white shadow-sm z-20 flex-shrink-0">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-slate-800">Explorador de Tijuana</h1>
+                <p class="text-xs md:text-sm text-slate-500">Navega y guarda tus puntos favoritos</p>
+            </div>
+            <div class="text-right hidden sm:block">
+                <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded border border-blue-400">Beta v2.3</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Pestañas Móviles (Solo visibles en móvil) -->
+    <div class="md:hidden bg-slate-200 p-2 flex gap-2 flex-shrink-0">
+        <button id="tab-map" onclick="switchTab('map')" class="flex-1 py-2 px-4 rounded-lg bg-white text-slate-800 font-bold shadow-sm transition-all" aria-label="Mostrar mapa">
+            🗺️ Mapa
+        </button>
+        <button id="tab-list" onclick="switchTab('list')" class="flex-1 py-2 px-4 rounded-lg bg-slate-300 text-slate-600 font-medium transition-all" aria-label="Mostrar lista de lugares">
+            📋 Lista
+        </button>
+    </div>
+
+    <!-- Contenido Principal (Grid Responsive) -->
+    <main class="flex-1 max-w-6xl mx-auto w-full p-2 md:p-6 overflow-hidden">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+            
+            <!-- COLUMNA 1: MAPA (2/3 del ancho en escritorio) -->
+            <div id="map-panel" class="md:col-span-2 h-full rounded-2xl overflow-hidden shadow-xl border-4 border-white relative flex flex-col">
+                <div id="map" class="w-full h-full z-0 bg-slate-200"></div>
+                
+                <!-- Overlay coordenadas -->
+                <div class="absolute bottom-4 left-4 z-[500] bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg text-xs font-mono text-slate-700 pointer-events-none hidden sm:block">
+                    📍 LAT: 32.5149 | LON: -117.0382
+                </div>
+
+                <!-- Botón Flotante para Centrar Mapa (Reset View) -->
+                <button onclick="resetMapView()" 
+                        class="absolute top-4 right-4 z-[500] bg-white hover:bg-slate-100 text-slate-700 p-2 rounded shadow-md border border-slate-300 transition-colors"
+                        title="Centrar mapa en Tijuana"
+                        aria-label="Centrar mapa en vista original">
+                    🎯
+                </button>
+            </div>
+
+            <!-- COLUMNA 2: LISTA (1/3 del ancho en escritorio) -->
+            <!-- En móvil está oculta por defecto hasta que se pulse el tab -->
+            <div id="list-panel" class="hidden md:flex md:col-span-1 h-full bg-white rounded-2xl shadow-xl border border-slate-200 flex-col overflow-hidden">
+                <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                    <h2 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                        <span class="bg-blue-600 w-2 h-6 rounded-full inline-block"></span>
+                        Lugares
+                    </h2>
+                    <span id="counter" class="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded-full">5</span>
+                </div>
+                
+                <div id="places-list" class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+                    <!-- Los items se generarán aquí con JS -->
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- TOAST DE NOTIFICACIÓN -->
+    <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-[9999]">
+        <div id="toast-spinner" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin hidden"></div>
+        <span id="toast-message" class="font-medium text-sm">Notificación</span>
+    </div>
+
+    <script>
+        // --- 0. ALMACENAMIENTO ---
+        const initialLocations = [
+            { lat: 32.5290, lng: -117.0234, title: "CECUT", desc: "Centro Cultural Tijuana" },
+            { lat: 32.5363, lng: -117.0375, title: "Av. Revolución", desc: "Ruta de Murales" },
+            { lat: 32.5323, lng: -117.0366, title: "Pasaje Rodríguez", desc: "Corredor de arte" },
+            { lat: 32.5343, lng: -117.1224, title: "Muro Fronterizo", desc: "Murales de la hermandad" },
+            { lat: 32.5255, lng: -117.0435, title: "Casa de la Cultura", desc: "Edificio histórico" }
+        ];
+
+        // Registro central de TODOS los marcadores (Estáticos + Personalizados)
+        // Clave: ID del punto, Valor: Instancia del marcador de Leaflet
+        const markersRegistry = {};
+
+        // Coordenadas iniciales para resetear la vista
+        const HOME_COORDS = [32.5149, -117.0382];
+        const HOME_ZOOM = 13;
+
+        // --- 2. CONFIGURACIÓN DEL MAPA ---
+        const map = L.map('map', {
+            zoomControl: false 
+        }).setView(HOME_COORDS, HOME_ZOOM);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const zoomControl = L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // **ACCESIBILIDAD**: Asegurar etiquetas ARIA en controles
+        setTimeout(() => {
+            const zoomInBtn = document.querySelector('.leaflet-control-zoom-in');
+            const zoomOutBtn = document.querySelector('.leaflet-control-zoom-out');
+            if (zoomInBtn) {
+                zoomInBtn.setAttribute('aria-label', 'Acercar mapa');
+                zoomInBtn.title = 'Acercar mapa';
+            }
+            if (zoomOutBtn) {
+                zoomOutBtn.setAttribute('aria-label', 'Alejar mapa');
+                zoomOutBtn.title = 'Alejar mapa';
+            }
+        }, 500);
+
+        // --- 3. RENDERIZADO DE LISTA Y MAPA ---
+        
+        // Función para agregar item a la lista
+        function addToList(title, desc, isNew = false, id = null) {
+            const listContainer = document.getElementById('places-list');
+            const item = document.createElement('div');
+            
+            if (id) item.id = `item-${id}`;
+
+            item.className = `p-3 bg-white rounded-lg shadow-sm border border-slate-100 hover:shadow-md transition-all cursor-pointer relative group ${isNew ? 'new-item' : ''}`;
+            
+            // Botón de eliminar (solo si es nuevo y tiene ID)
+            let deleteBtnHtml = '';
+            if (isNew && id) {
+                deleteBtnHtml = `
+                    <button onclick="borrarPunto('${id}', event)" 
+                            class="delete-btn-desktop absolute top-2 right-2 p-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-full transition-colors z-10" 
+                            title="Eliminar punto" 
+                            aria-label="Eliminar punto">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                `;
+            }
+
+            const defaultIcon = `<i class="text-slate-300 text-xs ml-2 ${isNew ? 'hidden md:block' : ''}">📍</i>`;
+
+            item.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="flex-1 pr-6">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold text-slate-800 text-sm">${title}</h3>
+                            ${!isNew ? defaultIcon : ''}
+                        </div>
+                        <p class="text-slate-500 text-xs mt-1 leading-snug">${desc}</p>
+                    </div>
+                </div>
+                ${deleteBtnHtml}
+            `;
+            
+            // --- EVENTO CLIC EN ÍTEM DE LISTA (FLY TO) ---
+            item.onclick = function(e) {
+                // Verificar si existe el marcador en el registro
+                if (id && markersRegistry[id]) {
+                    const marker = markersRegistry[id];
+                    
+                    // 1. Animación FlyTo hacia el marcador
+                    map.flyTo(marker.getLatLng(), 16, {
+                        duration: 1.5 // Duración en segundos (suave)
+                    });
+                    
+                    // 2. Abrir Popup automáticamente
+                    marker.openPopup();
+
+                    // 3. Si es móvil, cambiar a la pestaña del mapa automáticamente
+                    if (window.innerWidth < 768) {
+                        switchTab('map');
+                    }
+                }
+            };
+
+            if(isNew) {
+                listContainer.prepend(item);
+                updateCounter(1); 
+            } else {
+                listContainer.appendChild(item);
+            }
+        }
+
+        function updateCounter(add = 0) {
+            const counterEl = document.getElementById('counter');
+            // Recalcular basado en el registro real
+            if(add === 0) counterEl.innerText = Object.keys(markersRegistry).length;
+            else {
+                const current = parseInt(counterEl.innerText);
+                counterEl.innerText = current + add;
+            }
+        }
+
+        // Cargar puntos iniciales (Estáticos)
+        initialLocations.forEach((loc, index) => {
+            const id = `static-${index}`; // ID único para estáticos
+            const marker = L.marker([loc.lat, loc.lng]).addTo(map)
+                .bindPopup(`<div class="text-center"><h3 class="font-bold text-slate-800">${loc.title}</h3><p class="text-slate-600 text-sm">${loc.desc}</p></div>`);
+            
+            // Guardar referencia
+            markersRegistry[id] = marker;
+            
+            // Agregar a lista
+            addToList(loc.title, loc.desc, false, id);
+        });
+        updateCounter(0);
+
+        // --- 4. LÓGICA DE INTERACCIÓN ---
+        
+        let tempMarker = null;
+        let isSaving = false;
+
+        map.on('click', function(e) {
+            const { lat, lng } = e.latlng;
+            
+            if (tempMarker) map.removeLayer(tempMarker);
+
+            isSaving = false;
+            tempMarker = L.marker([lat, lng]).addTo(map);
+
+            const popupContent = `
+                <div class="p-1 text-center min-w-[160px]">
+                    <p class="mb-3 font-semibold text-slate-700 text-sm">¿Guardar este punto?</p>
+                    <div class="flex gap-2 justify-center">
+                        <button onclick="cancelarPunto()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2 px-3 rounded shadow transition-colors flex-1" aria-label="Cancelar guardado">Cancelar</button>
+                        <button onclick="guardarPunto(${lat}, ${lng})" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors flex-1" aria-label="Confirmar guardar punto">Confirmar</button>
+                    </div>
+                </div>
+            `;
+            
+            tempMarker.bindPopup(popupContent).openPopup();
+
+            tempMarker.on('popupclose', function() {
+                if (!isSaving && tempMarker) {
+                    map.removeLayer(tempMarker);
+                    tempMarker = null;
+                }
+            });
+        });
+
+        window.cancelarPunto = function() {
+            map.closePopup();
+        };
+
+        window.guardarPunto = function(lat, lng) {
+            isSaving = true;
+            const savedMarker = tempMarker; 
+            tempMarker = null; 
+            
+            savedMarker.closePopup();
+            mostrarToast("Guardando ubicación...", true);
+
+            const data = { lat: lat, lng: lng };
+            const latStr = lat.toFixed(4);
+            const lngStr = lng.toFixed(4);
+
+            // Simulación Fetch
+            setTimeout(() => {
+                processSuccess();
+            }, 600);
+
+            function processSuccess() {
+                mostrarToast("✅ ¡Punto guardado!", false);
+                
+                const pointId = Date.now().toString(); // ID único basado en tiempo
+
+                // 1. Guardar en Registro Central
+                markersRegistry[pointId] = savedMarker;
+
+                // 2. Actualizar Popup
+                savedMarker.unbindPopup();
+                savedMarker.bindPopup(`
+                    <div class="text-center min-w-[140px]">
+                        <h3 class="font-bold text-slate-800">Punto Personalizado</h3>
+                        <p class="text-slate-600 text-xs mt-1">Lat: ${latStr}<br>Lon: ${lngStr}</p>
+                        <button onclick="borrarPunto('${pointId}')" class="mt-2 text-xs text-red-500 hover:text-red-700 hover:underline flex items-center justify-center gap-1 w-full font-medium" aria-label="Eliminar este punto">
+                            🗑️ Eliminar punto
+                        </button>
+                    </div>
+                `);
+                
+                // 3. Agregar a lista con el ID nuevo
+                addToList(`Punto Personalizado`, `Lat: ${latStr}, Lon: ${lngStr}`, true, pointId);
+            }
+        };
+
+        // --- 5. LÓGICA DE BORRADO ---
+        window.borrarPunto = function(id, event) {
+            if (event) event.stopPropagation();
+
+            if (markersRegistry[id]) {
+                // 1. Eliminar del mapa
+                map.removeLayer(markersRegistry[id]);
+                delete markersRegistry[id];
+
+                // 2. Eliminar de la lista
+                const item = document.getElementById(`item-${id}`);
+                if (item) {
+                    item.style.transition = 'all 0.3s';
+                    item.style.opacity = '0';
+                    item.style.transform = 'translateX(20px)';
+                    setTimeout(() => item.remove(), 300);
+                }
+
+                updateCounter(-1);
+                mostrarToast("🗑️ Punto eliminado", false);
+            }
+        };
+
+        // --- 6. UTILIDADES UI ---
+
+        // Función para Resetear/Centrar vista
+        window.resetMapView = function() {
+            map.flyTo(HOME_COORDS, HOME_ZOOM, {
+                duration: 1.5
+            });
+        };
+
+        window.switchTab = function(tabName) {
+            const mapPanel = document.getElementById('map-panel');
+            const listPanel = document.getElementById('list-panel');
+            const btnMap = document.getElementById('tab-map');
+            const btnList = document.getElementById('tab-list');
+
+            if (tabName === 'map') {
+                mapPanel.classList.remove('hidden');
+                listPanel.classList.add('hidden');
+                btnMap.classList.replace('bg-slate-300', 'bg-white');
+                btnMap.classList.replace('text-slate-600', 'text-slate-800');
+                btnList.classList.replace('bg-white', 'bg-slate-300');
+                btnList.classList.replace('text-slate-800', 'text-slate-600');
+                setTimeout(() => { map.invalidateSize(); }, 100);
+            } else {
+                mapPanel.classList.add('hidden');
+                listPanel.classList.remove('hidden');
+                listPanel.classList.add('flex');
+                btnList.classList.replace('bg-slate-300', 'bg-white');
+                btnList.classList.replace('text-slate-600', 'text-slate-800');
+                btnMap.classList.replace('bg-white', 'bg-slate-300');
+                btnMap.classList.replace('text-slate-800', 'text-slate-600');
+            }
+        };
+
+        function mostrarToast(mensaje, cargando = false) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            const spinner = document.getElementById('toast-spinner');
+
+            msgEl.textContent = mensaje;
+            if (cargando) spinner.classList.remove('hidden');
+            else spinner.classList.add('hidden');
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            if (!cargando) {
+                setTimeout(() => {
+                    toast.classList.add('translate-y-20', 'opacity-0');
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>
