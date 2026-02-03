@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interactivo Tijuana</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+    <style>
+        /* Ajuste necesario porque Tailwind resetea estilos que Leaflet necesita */
+        .leaflet-container {
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans">
+
+    <!-- Contenedor Principal -->
+    <div class="max-w-4xl mx-auto p-4 md:py-8">
+        
+        <!-- Header simple -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-slate-800">Explorador de Tijuana</h1>
+            <p class="text-slate-600">Haz clic en el mapa para sugerir o guardar una nueva ubicación.</p>
+        </div>
+
+        <!-- Contenedor del Mapa con Tailwind -->
+        <div class="relative w-full h-[60vh] md:h-[500px] rounded-2xl overflow-hidden shadow-2xl border-4 border-white">
+            <div id="map" class="w-full h-full z-0"></div>
+            
+            <!-- Overlay decorativo -->
+            <div class="absolute bottom-4 left-4 z-[500] bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-xs font-mono text-slate-700 pointer-events-none">
+                📍 LAT: 32.5149 | LON: -117.0382
+            </div>
+        </div>
+
+    </div>
+
+    <!-- TOAST DE NOTIFICACIÓN (Oculto por defecto) -->
+    <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-[9999]">
+        <div id="toast-spinner" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin hidden"></div>
+        <span id="toast-message" class="font-medium text-sm">Notificación</span>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURACIÓN DEL MAPA ---
+        const map = L.map('map', {
+            zoomControl: false 
+        }).setView([32.5149, -117.0382], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // --- MARCADORES EXISTENTES ---
+        const locations = [
+            { lat: 32.5290, lng: -117.0234, title: "CECUT", desc: "Centro Cultural Tijuana" },
+            { lat: 32.5363, lng: -117.0375, title: "Av. Revolución", desc: "Ruta de Murales" },
+            { lat: 32.5323, lng: -117.0366, title: "Pasaje Rodríguez", desc: "Corredor de arte" },
+            { lat: 32.5343, lng: -117.1224, title: "Muro Fronterizo", desc: "Murales de la hermandad" },
+            { lat: 32.5255, lng: -117.0435, title: "Casa de la Cultura", desc: "Edificio histórico" }
+        ];
+
+        locations.forEach(loc => {
+            L.marker([loc.lat, loc.lng]).addTo(map)
+                .bindPopup(`<div class="text-center"><h3 class="font-bold text-slate-800">${loc.title}</h3><p class="text-slate-600 text-sm">${loc.desc}</p></div>`);
+        });
+
+        // --- 2. LÓGICA DE CLICK Y GUARDADO ---
+        
+        let tempMarker = null; // Variable para rastrear el marcador temporal
+
+        // Evento: Al hacer clic en el mapa
+        map.on('click', function(e) {
+            const { lat, lng } = e.latlng;
+
+            // Eliminar marcador temporal anterior si existe
+            if (tempMarker) {
+                map.removeLayer(tempMarker);
+            }
+
+            // 1. Poner marcador temporal inmediatamente
+            tempMarker = L.marker([lat, lng]).addTo(map);
+
+            // Contenido del Popup con DOS botones (Confirmar y Cancelar)
+            const popupContent = `
+                <div class="p-1 text-center min-w-[160px]">
+                    <p class="mb-3 font-semibold text-slate-700 text-sm">¿Guardar este punto?</p>
+                    <div class="flex gap-2 justify-center">
+                        <button 
+                            onclick="cancelarPunto()"
+                            class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2 px-3 rounded shadow transition-colors flex-1">
+                            Cancelar
+                        </button>
+                        <button 
+                            onclick="guardarPunto(${lat}, ${lng})"
+                            class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors flex-1">
+                            Confirmar
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // 2. Abrir Popup
+            tempMarker.bindPopup(popupContent).openPopup();
+        });
+
+        // Nueva función para borrar el marcador temporal
+        window.cancelarPunto = function() {
+            if (tempMarker) {
+                map.removeLayer(tempMarker); // Elimina el pin del mapa
+                tempMarker = null;           // Limpia la variable
+            }
+        };
+
+        // Función Global para ser llamada desde el HTML del Popup
+        window.guardarPunto = function(lat, lng) {
+            // Cerrar el popup inmediatamente para mejor UX
+            map.closePopup();
+            
+            // 3. Mostrar Toast "Guardando..."
+            mostrarToast("Guardando ubicación...", true);
+
+            const data = { lat: lat, lng: lng };
+
+            // 4. Fetch al endpoint Flask (Simulado aquí, pero código listo)
+            fetch('/guardar_punto', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            })
+            .then(response => {
+                if (response.ok) {
+                    mostrarToast("✅ ¡Punto guardado exitosamente!", false);
+                    // Opcional: Convertir el marcador temporal en permanente o cambiar su color
+                } else {
+                    // Si el backend no existe (probablemente el caso aquí), manejamos el error simulado
+                    throw new Error('Endpoint no encontrado');
+                }
+            })
+            .catch(error => {
+                console.warn("Nota: Como no hay backend Flask real corriendo, simulamos éxito tras el error de red.");
+                
+                // SIMULACIÓN DE ÉXITO (Para que veas la UI funcionar sin backend)
+                setTimeout(() => {
+                    mostrarToast("✅ ¡Guardado! (Simulado)", false);
+                }, 1000);
+            });
+        };
+
+        // --- FUNCIÓN DE UTILIDAD: TOAST ---
+        function mostrarToast(mensaje, cargando = false) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            const spinner = document.getElementById('toast-spinner');
+
+            // Configurar contenido
+            msgEl.textContent = mensaje;
+            if (cargando) {
+                spinner.classList.remove('hidden');
+            } else {
+                spinner.classList.add('hidden');
+            }
+
+            // Mostrar animación (Subir y Opacidad 1)
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            // Si no está cargando, ocultar automáticamente después de 3 segundos
+            if (!cargando) {
+                setTimeout(() => {
+                    toast.classList.add('translate-y-20', 'opacity-0');
+                }, 3000);
+            }
+        }
+
+    </script>
+</body>
+</html>

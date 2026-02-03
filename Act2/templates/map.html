@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interactivo Tijuana</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+    <style>
+        /* Ajuste necesario porque Tailwind resetea estilos que Leaflet necesita */
+        .leaflet-container {
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans">
+
+    <!-- Contenedor Principal -->
+    <div class="max-w-4xl mx-auto p-4 md:py-8">
+        
+        <!-- Header simple -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-slate-800">Explorador de Tijuana</h1>
+            <p class="text-slate-600">Navega por las rutas culturales y murales de la ciudad.</p>
+        </div>
+
+        <!-- Contenedor del Mapa con Tailwind -->
+        <!-- Sombra suave, bordes redondeados y altura responsiva (500px en escritorio, 60vh en móvil) -->
+        <div class="relative w-full h-[60vh] md:h-[500px] rounded-2xl overflow-hidden shadow-2xl border-4 border-white">
+            <div id="map" class="w-full h-full z-0"></div>
+            
+            <!-- Overlay decorativo opcional (como ejemplo de integración UI) -->
+            <div class="absolute bottom-4 left-4 z-[500] bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-xs font-mono text-slate-700 pointer-events-none">
+                📍 LAT: 32.5149 | LON: -117.0382
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 1. Inicializar el mapa
+        // Coordenadas de Tijuana Centro: 32.5149, -117.0382
+        // Zoom nivel 13 es ideal para vista de ciudad
+        // zoomControl: false (Lo desactivamos para añadirlo manualmente en otra posición)
+        const map = L.map('map', {
+            zoomControl: false 
+        }).setView([32.5149, -117.0382], 13);
+
+        // 2. Añadir capa de Tiles (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // 3. Añadir controles de Zoom en la esquina inferior derecha (más fácil de alcanzar)
+        L.control.zoom({
+            position: 'bottomright'
+        }).addTo(map);
+
+        // 4. Añadir un marcador de ejemplo en el CECUT (punto de referencia icónico)
+        const cecutMarker = L.marker([32.5290, -117.0234]).addTo(map);
+        
+        // Añadir popup al marcador
+        cecutMarker.bindPopup(`
+            <div class="text-center">
+                <h3 class="font-bold text-slate-800">CECUT</h3>
+                <p class="text-slate-600 text-sm">Centro Cultural Tijuana</p>
+            </div>
+        `).openPopup();
+
+        // 5. Añadir marcador en Av. Revolución
+        const revuMarker = L.marker([32.5363, -117.0375]).addTo(map);
+        revuMarker.bindPopup(`
+            <div class="text-center">
+                <h3 class="font-bold text-slate-800">Av. Revolución</h3>
+                <p class="text-slate-600 text-sm">Ruta de Murales</p>
+            </div>
+        `);
+
+        // 6. Pasaje Rodríguez (Callejón del Arte)
+        const pasajeMarker = L.marker([32.5323, -117.0366]).addTo(map);
+        pasajeMarker.bindPopup(`
+            <div class="text-center">
+                <h3 class="font-bold text-slate-800">Pasaje Rodríguez</h3>
+                <p class="text-slate-600 text-sm">Corredor de arte, murales y cultura underground.</p>
+            </div>
+        `);
+
+        // 7. Murales de Playas de Tijuana (El Muro)
+        const playasMarker = L.marker([32.5343, -117.1224]).addTo(map);
+        playasMarker.bindPopup(`
+            <div class="text-center">
+                <h3 class="font-bold text-slate-800">Muro Fronterizo</h3>
+                <p class="text-slate-600 text-sm">Murales de la hermandad y arte de protesta.</p>
+            </div>
+        `);
+
+        // 8. Casa de la Cultura (Altamira)
+        const casaCulturaMarker = L.marker([32.5255, -117.0435]).addTo(map);
+        casaCulturaMarker.bindPopup(`
+            <div class="text-center">
+                <h3 class="font-bold text-slate-800">Casa de la Cultura</h3>
+                <p class="text-slate-600 text-sm">Edificio histórico y exposiciones de arte.</p>
+            </div>
+        `);
+
+    </script>
+</body>
+</html>
